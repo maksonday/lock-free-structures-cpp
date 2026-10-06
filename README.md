@@ -107,6 +107,35 @@ The stack is implemented as a singly linked list:
 
 This design helps prevent use-after-free situations in concurrent access.
 
+## Verifying correctness
+
+The project includes a test executable that validates both basic behavior and concurrent stress scenarios.
+
+### Standard build
+
+```bash
+cmake -S . -B build
+cmake --build build
+./build/lock_free_tests
+```
+
+### AddressSanitizer build
+
+This is useful for catching memory bugs and use-after-free issues during concurrent access.
+
+```bash
+cmake -S . -B build-asan -DENABLE_ASAN=ON
+cmake --build build-asan
+./build-asan/lock_free_tests
+```
+
+The default test program checks:
+
+- single-thread stack behavior
+- multi-thread push/pop correctness
+- total pushed and popped counts match
+- no duplicate or lost elements appear under contention
+
 ## Project Structure
 
 ```text
