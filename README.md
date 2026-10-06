@@ -45,20 +45,37 @@ cmake --build build
 
 ```cpp
 #include <iostream>
+#include <thread>
+#include <vector>
 #include "stack.hpp"
 
 int main() {
     lock_free::Stack<int> stack{};
 
-    stack.push(10);
-    stack.push(20);
-    stack.push(30);
+    std::vector<std::thread> producers;
+    std::vector<std::thread> consumers;
 
-    std::cout << stack.pop().value() << '\n'; // 30
-    std::cout << stack.pop().value() << '\n'; // 20
-    std::cout << stack.pop().value() << '\n'; // 10
+    for (int i = 0; i < 4; ++i) {
+        producers.emplace_back([&stack, i]() {
+            for (int value = i * 100; value < i * 100 + 50; ++value) {
+                stack.push(value);
+            }
+        });
+    }
 
-    return 0;
+    for (int i = 0; i < 4; ++i) {
+        consumers.emplace_back([&stack]() {
+            for (int j = 0; j < 50; ++j) {
+                auto value = stack.pop();
+                if (value.has_value()) {
+                    std::cout << value.value() << ' ';
+                }
+            }
+        });
+    }
+
+    for (auto& t : producers) t.join();
+    for (auto& t : consumers) t.join();
 }
 ```
 
