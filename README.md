@@ -6,22 +6,32 @@
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" />
 </p>
 
-A lock-free stack implemented in C++20.
+A collection of lock-free data structures implemented in C++20.
+
+## Contents
+
+- [Stack](#stack)
 
 ## Overview
 
-`lock_free::Stack<T>` provides concurrent `push()` and `pop()` operations without mutexes. The implementation uses atomic instructions and hazard pointers to safely manage node reclamation in multithreaded workloads.
+This project contains a set of lock-free data structures designed for concurrent access without mutexes. Each structure is documented in a dedicated section below.
 
-## Features
+## Stack
+
+### Overview
+
+`lock_free::Stack<T>` provides concurrent `push()` and `pop()` operations without mutexes. The implementation uses atomic operations and hazard pointers to safely manage node reclamation in multithreaded workloads.
+
+### Features
 
 - lock-free stack semantics
 - template-based API
 - `std::optional<T>` return type for `pop()`
-- header-only inclusion via `include/`
+- header-only style
 - CMake build configuration
-- stress tests included
+- built-in stress tests
 
-## Quick Start
+### Quick Start
 
 ```bash
 git clone <repository-url>
@@ -31,7 +41,7 @@ cmake --build build
 ./build/lock_free_tests
 ```
 
-## Usage
+### Usage
 
 ```cpp
 #include <iostream>
@@ -52,7 +62,7 @@ int main() {
 }
 ```
 
-## API
+### API
 
 ```cpp
 namespace lock_free {
@@ -69,6 +79,16 @@ public:
 
 } // namespace lock_free
 ```
+
+### Internal behavior
+
+The stack is implemented as a singly linked list:
+
+- `push()` inserts a new node at the head using CAS loops
+- `pop()` reads the current head, publishes the pointer as a hazard pointer, validates the node, and then atomically updates the head
+- retired nodes are deferred from immediate deletion until it is safe to reclaim them
+
+This design helps prevent use-after-free situations in concurrent access.
 
 ## Project Structure
 
