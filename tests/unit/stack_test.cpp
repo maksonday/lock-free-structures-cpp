@@ -1,29 +1,28 @@
-#include "queue.hpp"
+#include "lock_free/stack.hpp"
 
 #include <atomic>
 #include <cassert>
 #include <iostream>
-#include <optional>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
 #include "tests.hpp"
 
-namespace queue_tests {
+namespace stack_tests {
 using namespace lock_free;
 
 void RunSingleThreadTest() {
     std::cout << "[TEST] Running single thread test... " << std::flush;
-    Queue<int> s{};
+    Stack<int> s{};
 
     s.push(10);
     s.push(20);
     s.push(30);
 
-    assert(s.pop() == 10);
-    assert(s.pop() == 20);
     assert(s.pop() == 30);
+    assert(s.pop() == 20);
+    assert(s.pop() == 10);
     assert(s.pop() == std::nullopt);
 
     std::cout << "PASSED!" << std::endl;
@@ -31,10 +30,10 @@ void RunSingleThreadTest() {
 
 void RunMultiThreadStressTest() {
     std::cout << "[TEST] Running multi-thread stress test... " << std::flush;
-    Queue<int> s{};
+    Stack<int> s{};
 
-    const int kNumThreads = 8;
-    const int kOperationsPerThread = 1000000;
+    constexpr int kNumThreads = 8;
+    constexpr int kOperationsPerThread = 1000000;
 
     std::atomic<int> total_pushed{0};
     std::atomic<int> total_popped{0};
@@ -42,7 +41,7 @@ void RunMultiThreadStressTest() {
     std::vector<std::thread> producers;
     std::vector<std::thread> consumers;
     std::unordered_map<int, std::atomic<int>> checker(kOperationsPerThread * kNumThreads);
-    for (int i = 0; i < kOperationsPerThread * kNumThreads; i++) {
+    for (int i = 0; i < kOperationsPerThread * kNumThreads; ++i) {
         checker.emplace(i, 0);
     }
 
@@ -71,16 +70,20 @@ void RunMultiThreadStressTest() {
         });
     }
 
-    for (auto& t : producers) t.join();
-    for (auto& t : consumers) t.join();
+    for (auto& t : producers) {
+        t.join();
+    }
+    for (auto& t : consumers) {
+        t.join();
+    }
 
     assert(total_pushed.load() == total_popped.load());
     assert(s.pop() == std::nullopt);
-    int non_empty_buckets = 0;
 
+    int non_empty_buckets = 0;
     for (auto& it : checker) {
         if (it.second.load() != 0) {
-            non_empty_buckets++;
+            ++non_empty_buckets;
         }
     }
 
@@ -89,13 +92,13 @@ void RunMultiThreadStressTest() {
     std::cout << "PASSED! (Successfully processed " << total_pushed.load() << " elements)"
               << std::endl;
 }
-}  // namespace queue_tests
+}  // namespace stack_tests
 
 namespace tests {
-void run_queue_tests() {
-    queue_tests::RunSingleThreadTest();
-    queue_tests::RunMultiThreadStressTest();
+void run_stack_tests() {
+    stack_tests::RunSingleThreadTest();
+    stack_tests::RunMultiThreadStressTest();
 
-    std::cout << "\nQueue tests completed successfully!\n" << std::endl;
+    std::cout << "\nStack tests completed successfully!\n" << std::endl;
 }
 }  // namespace tests

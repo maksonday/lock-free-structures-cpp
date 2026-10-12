@@ -3,8 +3,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "common.hpp"
-
 namespace lock_free {
 template <typename T>
 struct Queue<T>::Node {

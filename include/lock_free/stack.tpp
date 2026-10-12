@@ -4,8 +4,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "common.hpp"
-
 namespace lock_free {
 template <typename T>
 struct Stack<T>::Node {
@@ -49,11 +47,9 @@ std::optional<T> Stack<T>::pop() {
 
     std::optional<T> val{std::nullopt};
     while (h) {
-        PtrGuard<Node> huard(hazard);
+        PtrGuard<Node> guard(hazard);
         hazard.store(h);
 
-        // need to check if h is still actual since we've published it to hazard-pointer
-        // otherwise we need to update h and retry to publish it to hazard-pointer
         if (head_.load(std::memory_order_acquire) != h) {
             h = head_.load(std::memory_order_acquire);
             continue;

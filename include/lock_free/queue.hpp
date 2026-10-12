@@ -3,9 +3,10 @@
 #include <atomic>
 #include <optional>
 
-#include "common.hpp"
+#include "lock_free/internal/common.hpp"
 
 namespace lock_free {
+
 template <typename T>
 class Queue {
    public:
@@ -33,4 +34,4 @@ class Queue {
 };
 }  // namespace lock_free
 
-#include "queue.tpp"
+#include "lock_free/queue.tpp"

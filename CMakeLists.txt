@@ -13,10 +13,22 @@ target_compile_features(lock_free INTERFACE cxx_std_20)
 option(BUILD_TESTS "Build lock-free library tests" ON)
 
 if(BUILD_TESTS)
-    file(GLOB SRC_FILES CONFIGURE_DEPENDS "tests/*.cpp")
-    add_executable(lock_free_tests ${SRC_FILES})
+    enable_testing()
+
+    add_executable(lock_free_tests
+        tests/main.cpp
+        tests/unit/queue_test.cpp
+        tests/unit/stack_test.cpp
+    )
+
+    target_include_directories(lock_free_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests
+    )
     target_link_libraries(lock_free_tests PRIVATE lock_free)
     set_target_properties(lock_free_tests PROPERTIES CXX_STANDARD 20)
+
+    add_test(NAME lock_free_tests COMMAND lock_free_tests)
 endif()
 
 option(ENABLE_ASAN "Build tests with AddressSanitizer" OFF)
