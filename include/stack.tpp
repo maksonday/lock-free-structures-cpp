@@ -16,138 +16,8 @@ struct Stack<T>::Node {
 };
 
 template <typename T>
-class Stack<T>::Hazard {
-   private:
-    static constexpr int SCAN_THRESHOLD = 64;
-
-    std::atomic<bool> active_ = false;
-    std::atomic<Stack<T>::Node*> ptr_ = nullptr;
-    HazardRegistry* registry_ = nullptr;
-    std::vector<Node*> retire_list_;
-
-   public:
-    void init(HazardRegistry* registry) { registry_ = registry; }
-    void store(Node* node) { ptr_.store(node, std::memory_order_seq_cst); }
-    void release() { ptr_.store(nullptr, std::memory_order_seq_cst); }
-    void deactivate() { active_.store(false, std::memory_order_seq_cst); }
-
-    bool is_active() {
-        bool expected = false;
-        return active_.compare_exchange_strong(expected, true, std::memory_order_acq_rel,
-                                               std::memory_order_relaxed);
-    }
-
-    Node* value() { return ptr_.load(); }
-
-    void scan() {
-        auto active_pointers = registry_->active_pointers();
-        auto it = retire_list_.begin();
-        while (it != retire_list_.end()) {
-            Node* node = *it;
-            if (active_pointers.find(node) == active_pointers.end()) {
-                delete (node);
-                it = retire_list_.erase(it);
-            } else {
-                it++;
-            }
-        }
-    }
-
-    void retire(Node* el) {
-        if (el == nullptr) {
-            return;
-        }
-
-        retire_list_.push_back(el);
-
-        if (retire_list_.size() >= SCAN_THRESHOLD) {
-            scan();
-        }
-    }
-
-    void clear() {
-        for (auto& node : retire_list_) {
-            delete (node);
-        }
-    }
-};
-
-template <typename T>
-class Stack<T>::PtrGuard {
-   public:
-    PtrGuard(Hazard& hazard) : hazard_(hazard) {}
-    ~PtrGuard() { hazard_.release(); }
-
-   private:
-    Hazard& hazard_;
-};
-
-template <typename T>
-class Stack<T>::HazardGuard {
-   public:
-    HazardGuard(Hazard& hazard) : hazard_(hazard) {}
-    ~HazardGuard() { hazard_.deactivate(); }
-
-   private:
-    Hazard& hazard_;
-};
-
-template <typename T>
-class Stack<T>::HazardRegistry {
-   public:
-    HazardRegistry(size_t threads_count = 0)
-        : registry_(threads_count > 0 ? std::vector<Hazard>(threads_count)
-                                      : std::vector<Hazard>(default_threads_count())) {
-        for (auto& h : registry_) {
-            h.init(this);
-        }
-    }
-
-    ~HazardRegistry() {
-        for (auto& h : registry_) {
-            h.release();
-        }
-    }
-
-    Hazard& acquire() {
-        for (auto& h : registry_) {
-            if (h.is_active()) {
-                return h;
-            }
-        }
-
-        throw std::runtime_error("limit of max threads exceeded");
-    }
-
-    std::unordered_set<Node*> active_pointers() {
-        std::unordered_set<Node*> set;
-        for (auto& h : registry_) {
-            if (auto ptr = h.value()) {
-                set.insert(ptr);
-            }
-        }
-
-        return set;
-    }
-
-    void clear_retired() {
-        for (auto& hazard : registry_) {
-            hazard.clear();
-        }
-    }
-
-   private:
-    static size_t default_threads_count() {
-        const uint threads_count = std::thread::hardware_concurrency();
-        return threads_count ? threads_count : kMaxThreads;
-    }
-
-    std::vector<Hazard> registry_;
-};
-
-template <typename T>
 Stack<T>::Stack(size_t threads_count)
-    : head_(nullptr), hazard_registry_(HazardRegistry(threads_count)) {}
+    : head_(nullptr), hazard_registry_(HazardRegistry<Node>(threads_count)) {}
 
 template <typename T>
 Stack<T>::~Stack() {
@@ -173,13 +43,13 @@ void Stack<T>::push(T value) {
 
 template <typename T>
 std::optional<T> Stack<T>::pop() {
-    Hazard& hazard = hazard_registry_.acquire();
-    HazardGuard h_guard(hazard);
+    Hazard<Node>& hazard = hazard_registry_.acquire();
+    HazardGuard<Node> h_guard(hazard);
     auto h = head_.load(std::memory_order_acquire);
 
     std::optional<T> val{std::nullopt};
     while (h) {
-        PtrGuard huard(hazard);
+        PtrGuard<Node> huard(hazard);
         hazard.store(h);
 
         // need to check if h is still actual since we've published it to hazard-pointer

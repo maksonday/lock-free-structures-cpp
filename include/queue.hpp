@@ -3,8 +3,9 @@
 #include <atomic>
 #include <optional>
 
-namespace lock_free {
+#include "common.hpp"
 
+namespace lock_free {
 template <typename T>
 class Queue {
    public:
@@ -25,15 +26,10 @@ class Queue {
    private:
     struct Node;
 
-    class Hazard;
-    class PtrGuard;
-    class HazardGuard;
-    class HazardRegistry;
-
     Node* dummy_;
     std::atomic<Node*> head_;
     std::atomic<Node*> tail_;
-    HazardRegistry hazard_registry_;
+    HazardRegistry<Node> hazard_registry_;
 };
 }  // namespace lock_free
 

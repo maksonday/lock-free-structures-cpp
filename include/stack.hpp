@@ -3,8 +3,9 @@
 #include <atomic>
 #include <optional>
 
-namespace lock_free {
+#include "common.hpp"
 
+namespace lock_free {
 template <typename T>
 class Stack {
    public:
@@ -24,13 +25,8 @@ class Stack {
    private:
     struct Node;
 
-    class Hazard;
-    class PtrGuard;
-    class HazardGuard;
-    class HazardRegistry;
-
     std::atomic<Node*> head_;
-    HazardRegistry hazard_registry_;
+    HazardRegistry<Node> hazard_registry_;
 };
 
 }  // namespace lock_free
