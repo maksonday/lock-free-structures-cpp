@@ -1,8 +1,3 @@
-#include <stdexcept>
-#include <thread>
-#include <unordered_set>
-#include <vector>
-
 namespace lock_free {
 template <typename T>
 struct Queue<T>::Node {
