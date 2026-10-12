@@ -1,66 +1,12 @@
-#include <atomic>
-#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <thread>
 #include <unordered_set>
 #include <vector>
 
+#include "common.hpp"
+
 namespace lock_free {
-
-template <typename T>
-Stack<T>::Stack(size_t threads_count)
-    : head_(nullptr), hazard_registry_(HazardRegistry(threads_count)) {}
-
-template <typename T>
-Stack<T>::~Stack() {
-    while (pop().has_value()) {
-    }
-}
-
-template <typename T>
-void Stack<T>::push(T value) {
-    auto h = head_.load(std::memory_order_acquire);
-    auto new_node = new Node{value};
-    do {
-        new_node->next = h;
-    } while (!head_.compare_exchange_weak(h, new_node, std::memory_order_release,
-                                          std::memory_order_relaxed));
-}
-
-template <typename T>
-std::optional<T> Stack<T>::pop() {
-    Hazard& hazard = hazard_registry_.acquire();
-    HazardGuard guard(hazard);
-    auto h = head_.load(std::memory_order_acquire);
-
-    while (h) {
-        hazard.store(h);
-
-        // need to check if h is still actual since we've published it to hazard-pointer
-        // otherwise we need to update h and retry to publish it to hazard-pointer
-        if (head_.load(std::memory_order_acquire) != h) {
-            hazard.store(nullptr);
-
-            h = head_.load(std::memory_order_acquire);
-            continue;
-        }
-
-        auto next = h->next;
-        if (head_.compare_exchange_weak(h, next, std::memory_order_acq_rel,
-                                        std::memory_order_relaxed)) {
-            auto val = std::move(h->val);
-            hazard.retire(h);
-            hazard.store(nullptr);
-
-            return val;
-        }
-        hazard.store(nullptr);
-    }
-
-    return std::nullopt;
-}
-
 template <typename T>
 struct Stack<T>::Node {
     T val;
@@ -82,11 +28,8 @@ class Stack<T>::Hazard {
    public:
     void init(HazardRegistry* registry) { registry_ = registry; }
     void store(Node* node) { ptr_.store(node, std::memory_order_seq_cst); }
-    void release() {
-        ptr_.store(nullptr, std::memory_order_seq_cst);
-        scan();
-        active_.store(false, std::memory_order_seq_cst);
-    }
+    void release() { ptr_.store(nullptr, std::memory_order_seq_cst); }
+    void deactivate() { active_.store(false, std::memory_order_seq_cst); }
 
     bool is_active() {
         bool expected = false;
@@ -121,6 +64,32 @@ class Stack<T>::Hazard {
             scan();
         }
     }
+
+    void clear() {
+        for (auto& node : retire_list_) {
+            delete (node);
+        }
+    }
+};
+
+template <typename T>
+class Stack<T>::PtrGuard {
+   public:
+    PtrGuard(Hazard& hazard) : hazard_(hazard) {}
+    ~PtrGuard() { hazard_.release(); }
+
+   private:
+    Hazard& hazard_;
+};
+
+template <typename T>
+class Stack<T>::HazardGuard {
+   public:
+    HazardGuard(Hazard& hazard) : hazard_(hazard) {}
+    ~HazardGuard() { hazard_.deactivate(); }
+
+   private:
+    Hazard& hazard_;
 };
 
 template <typename T>
@@ -161,6 +130,12 @@ class Stack<T>::HazardRegistry {
         return set;
     }
 
+    void clear_retired() {
+        for (auto& hazard : registry_) {
+            hazard.clear();
+        }
+    }
+
    private:
     static size_t default_threads_count() {
         const uint threads_count = std::thread::hardware_concurrency();
@@ -171,13 +146,59 @@ class Stack<T>::HazardRegistry {
 };
 
 template <typename T>
-class Stack<T>::HazardGuard {
-   public:
-    explicit HazardGuard(Hazard& hazard) : hazard_(hazard) {}
-    ~HazardGuard() { hazard_.release(); }
+Stack<T>::Stack(size_t threads_count)
+    : head_(nullptr), hazard_registry_(HazardRegistry(threads_count)) {}
 
-   private:
-    Hazard& hazard_;
-};
+template <typename T>
+Stack<T>::~Stack() {
+    Node* node = head_.load(std::memory_order_relaxed);
+    while (node != nullptr) {
+        Node* next = node->next;
+        delete (node);
+        node = next;
+    }
+
+    hazard_registry_.clear_retired();
+}
+
+template <typename T>
+void Stack<T>::push(T value) {
+    auto h = head_.load(std::memory_order_acquire);
+    auto new_node = new Node{value};
+    do {
+        new_node->next = h;
+    } while (!head_.compare_exchange_weak(h, new_node, std::memory_order_release,
+                                          std::memory_order_relaxed));
+}
+
+template <typename T>
+std::optional<T> Stack<T>::pop() {
+    Hazard& hazard = hazard_registry_.acquire();
+    HazardGuard h_guard(hazard);
+    auto h = head_.load(std::memory_order_acquire);
+
+    std::optional<T> val{std::nullopt};
+    while (h) {
+        PtrGuard huard(hazard);
+        hazard.store(h);
+
+        // need to check if h is still actual since we've published it to hazard-pointer
+        // otherwise we need to update h and retry to publish it to hazard-pointer
+        if (head_.load(std::memory_order_acquire) != h) {
+            h = head_.load(std::memory_order_acquire);
+            continue;
+        }
+
+        auto next = h->next;
+        if (head_.compare_exchange_weak(h, next, std::memory_order_acq_rel,
+                                        std::memory_order_relaxed)) {
+            val = std::move(h->val);
+            hazard.retire(h);
+            break;
+        }
+    }
+
+    return val;
+}
 
 }  // namespace lock_free
