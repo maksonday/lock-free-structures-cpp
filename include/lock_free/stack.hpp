@@ -3,9 +3,9 @@
 #include <atomic>
 #include <optional>
 
-namespace lock_free {
+#include "lock_free/internal/common.hpp"
 
-inline constexpr std::size_t kMaxThreads = 1024;
+namespace lock_free {
 
 template <typename T>
 class Stack {
@@ -17,7 +17,7 @@ class Stack {
      std::thread::hardware_concurrency(). If std::thread::hardware_concurrency() equals 0, limits to
      1024 threads.
      */
-    Stack(size_t threads_count = 0);
+    explicit Stack(size_t threads_count = 0);
     ~Stack();
 
     void push(T value);
@@ -25,14 +25,11 @@ class Stack {
 
    private:
     struct Node;
-    class HazardRegistry;
-    class Hazard;
-    class HazardGuard;
 
     std::atomic<Node*> head_;
-    HazardRegistry hazard_registry_;
+    HazardRegistry<Node> hazard_registry_;
 };
 
 }  // namespace lock_free
 
-#include "stack.tpp"
+#include "lock_free/stack.tpp"
